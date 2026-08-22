@@ -22,8 +22,18 @@
     "strictBindCallApply": true,
     "noFallthroughCasesInSwitch": true,
     "paths": {
-      "@app/config": ["libs/config/src"],
-      "@app/config/*": ["libs/config/src/*"]
+      "@app/config": [
+        "libs/config/src"
+      ],
+      "@app/config/*": [
+        "libs/config/src/*"
+      ],
+      "@app/database": [
+        "libs/database/src"
+      ],
+      "@app/database/*": [
+        "libs/database/src/*"
+      ]
     },
     "baseUrl": "./"
   }
