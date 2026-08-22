@@ -27,6 +27,7 @@
     "@prisma/adapter-pg": "^7.9.1",
     "@prisma/client": "^7.9.1",
     "dotenv": "^17.4.2",
+    "ioredis": "^6.0.0",
     "pg": "^8.23.0",
     "reflect-metadata": "^0.2.2",
     "rxjs": "^7.8.1",
@@ -81,7 +82,8 @@
     ],
     "moduleNameMapper": {
       "^@app/config(|/.*)$": "<rootDir>/libs/config/src/$1",
-      "^@app/database(|/.*)$": "<rootDir>/libs/database/src/$1"
+      "^@app/database(|/.*)$": "<rootDir>/libs/database/src/$1",
+      "^@app/redis(|/.*)$": "<rootDir>/libs/redis/src/$1"
     }
   }
 }

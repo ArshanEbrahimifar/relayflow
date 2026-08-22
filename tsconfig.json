@@ -33,6 +33,12 @@
       ],
       "@app/database/*": [
         "libs/database/src/*"
+      ],
+      "@app/redis": [
+        "libs/redis/src"
+      ],
+      "@app/redis/*": [
+        "libs/redis/src/*"
       ]
     },
     "baseUrl": "./"
