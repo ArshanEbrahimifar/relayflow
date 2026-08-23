@@ -77,4 +77,24 @@ export class AuthService {
       accessToken,
     };
   }
+
+  async me(userId: string) {
+    const user = await this.database.user.findUnique({
+      where: {
+        id: userId,
+      },
+      select: {
+        id: true,
+        email: true,
+        createdAt: true,
+        updatedAt: true,
+      },
+    });
+
+    if (!user) {
+      throw new UnauthorizedException();
+    }
+
+    return user;
+  }
 }
