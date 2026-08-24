@@ -11,10 +11,33 @@ datasource db {
   provider = "postgresql"
 }
 
+enum WorkflowStatus {
+  DRAFT
+  ACTIVE
+  PAUSED
+}
+
 model User {
   id           String   @id @default(uuid())
   email        String   @unique
   passwordHash String
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
+  workflows    Workflow[]
+}
+
+
+model Workflow {
+  id         String         @id @default(uuid())
+  userId     String
+  name       String
+  status     WorkflowStatus @default(DRAFT)
+  definition Json           @db.JsonB
+  version    Int            @default(1)
+  createdAt  DateTime       @default(now())
+  updatedAt  DateTime       @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
 }
