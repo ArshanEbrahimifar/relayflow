@@ -1,4 +1,8 @@
-import { BadRequestException, Injectable } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { DatabaseService } from '@app/database';
 
 import { CreateWorkflowDto } from './dto/create-workflow.dto';
@@ -31,5 +35,48 @@ export class WorkflowsService {
         updatedAt: true,
       },
     });
+  }
+
+  async findAll(userId: string) {
+    return await this.database.workflow.findMany({
+      where: {
+        userId,
+      },
+      select: {
+        id: true,
+        name: true,
+        status: true,
+        version: true,
+        createdAt: true,
+        updatedAt: true,
+      },
+      orderBy: {
+        createdAt: 'desc',
+      },
+    });
+  }
+
+  async findOne(userId: string, workflowId: string) {
+    const workflow = await this.database.workflow.findFirst({
+      where: {
+        id: workflowId,
+        userId,
+      },
+      select: {
+        id: true,
+        name: true,
+        status: true,
+        definition: true,
+        version: true,
+        createdAt: true,
+        updatedAt: true,
+      },
+    });
+
+    if (!workflow) {
+      throw new NotFoundException('Workflow not found');
+    }
+
+    return workflow;
   }
 }
