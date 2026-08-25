@@ -77,4 +77,71 @@ export class ExecutionsService {
       },
     });
   }
+
+  async findAll(userId: string) {
+    return this.database.execution.findMany({
+      where: {
+        userId,
+      },
+      select: {
+        id: true,
+        workflowId: true,
+        workflowVersion: true,
+        triggerType: true,
+        status: true,
+        startedAt: true,
+        finishedAt: true,
+        createdAt: true,
+
+        workflow: {
+          select: {
+            name: true,
+          },
+        },
+      },
+      orderBy: {
+        createdAt: 'desc',
+      },
+    });
+  }
+
+  async findOne(userId: string, executionId: string) {
+    const execution = await this.database.execution.findFirst({
+      where: {
+        id: executionId,
+        userId,
+      },
+      select: {
+        id: true,
+        workflowId: true,
+        workflowVersion: true,
+
+        workflowSnapshot: true,
+
+        triggerType: true,
+        triggerPayload: true,
+
+        status: true,
+
+        error: true,
+        startedAt: true,
+        finishedAt: true,
+
+        createdAt: true,
+        updatedAt: true,
+
+        workflow: {
+          select: {
+            name: true,
+          },
+        },
+      },
+    });
+
+    if (!execution) {
+      throw new NotFoundException('Execution not found');
+    }
+
+    return execution;
+  }
 }
