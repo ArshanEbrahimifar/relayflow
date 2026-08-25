@@ -4,6 +4,7 @@ import {
   Get,
   Param,
   ParseUUIDPipe,
+  Patch,
   Post,
   Req,
   UseGuards,
@@ -15,6 +16,7 @@ import { JwtPayload } from '../auth/types/jwt-payload.type';
 
 import { CreateWorkflowDto } from './dto/create-workflow.dto';
 import { WorkflowsService } from './workflows.service';
+import { UpdateWorkflowDto } from './dto/update-workflow.dto';
 
 type AuthenticatedRequest = Request & {
   user: JwtPayload;
@@ -41,5 +43,15 @@ export class WorkflowsController {
     @Param('id', new ParseUUIDPipe()) workflowId: string,
   ) {
     return this.workflowsService.findOne(request.user.sub, workflowId);
+  }
+
+  @Patch(':id')
+  update(
+    @Req() request: AuthenticatedRequest,
+    @Param('id', new ParseUUIDPipe())
+    workflowId: string,
+    @Body() dto: UpdateWorkflowDto,
+  ) {
+    return this.workflowsService.update(request.user.sub, workflowId, dto);
   }
 }
