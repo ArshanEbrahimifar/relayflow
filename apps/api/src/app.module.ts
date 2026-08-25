@@ -5,6 +5,7 @@ import { RedisModule } from '@app/redis';
 import { HealthModule } from './health/health.module';
 import { AuthModule } from './auth/auth.module';
 import { WorkflowsModule } from './workflows/workflows.module';
+import { ExecutionsModule } from './executions/executions.module';
 
 @Module({
   imports: [
@@ -14,6 +15,7 @@ import { WorkflowsModule } from './workflows/workflows.module';
     HealthModule,
     AuthModule,
     WorkflowsModule,
+    ExecutionsModule,
   ],
 })
 export class AppModule {}
