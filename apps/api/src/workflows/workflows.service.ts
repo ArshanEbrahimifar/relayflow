@@ -154,4 +154,84 @@ export class WorkflowsService {
       },
     });
   }
+
+  async activate(userId: string, workflowId: string) {
+    const workflow = await this.database.workflow.findFirst({
+      where: {
+        id: workflowId,
+        userId,
+      },
+    });
+
+    if (!workflow) {
+      throw new NotFoundException('Workflow not found');
+    }
+
+    if (workflow.status === 'ACTIVE') {
+      throw new BadRequestException('Workflow is already active');
+    }
+
+    const parsedDefinition = workflowDefinitionSchema.safeParse(
+      workflow.definition,
+    );
+
+    if (!parsedDefinition.success) {
+      throw new BadRequestException('Workflow definition is invalid');
+    }
+
+    if (parsedDefinition.data.steps.length === 0) {
+      throw new BadRequestException(
+        'Workflow must have at least one step before activation',
+      );
+    }
+
+    return this.database.workflow.update({
+      where: {
+        id: workflow.id,
+      },
+      data: {
+        status: 'ACTIVE',
+      },
+      select: {
+        id: true,
+        name: true,
+        status: true,
+        version: true,
+        updatedAt: true,
+      },
+    });
+  }
+
+  async pause(userId: string, workflowId: string) {
+    const workflow = await this.database.workflow.findFirst({
+      where: {
+        id: workflowId,
+        userId,
+      },
+    });
+
+    if (!workflow) {
+      throw new NotFoundException('Workflow not found');
+    }
+
+    if (workflow.status !== 'ACTIVE') {
+      throw new BadRequestException('Only active workflows can be paused');
+    }
+
+    return this.database.workflow.update({
+      where: {
+        id: workflow.id,
+      },
+      data: {
+        status: 'PAUSED',
+      },
+      select: {
+        id: true,
+        name: true,
+        status: true,
+        version: true,
+        updatedAt: true,
+      },
+    });
+  }
 }

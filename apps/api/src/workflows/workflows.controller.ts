@@ -54,4 +54,22 @@ export class WorkflowsController {
   ) {
     return this.workflowsService.update(request.user.sub, workflowId, dto);
   }
+
+  @Patch(':id/activate')
+  activate(
+    @Req() request: AuthenticatedRequest,
+    @Param('id', new ParseUUIDPipe())
+    workflowId: string,
+  ) {
+    return this.workflowsService.activate(request.user.sub, workflowId);
+  }
+
+  @Patch(':id/pause')
+  pause(
+    @Req() request: AuthenticatedRequest,
+    @Param('id', new ParseUUIDPipe())
+    workflowId: string,
+  ) {
+    return this.workflowsService.pause(request.user.sub, workflowId);
+  }
 }
