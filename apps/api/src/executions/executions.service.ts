@@ -2,6 +2,7 @@ import {
   BadRequestException,
   Injectable,
   NotFoundException,
+  ServiceUnavailableException,
 } from '@nestjs/common';
 
 import { DatabaseService } from '@app/database';
@@ -9,11 +10,23 @@ import { DatabaseService } from '@app/database';
 import { RunWorkflowDto } from './dto/run-workflow.dto';
 import { executionInputSchema } from './schemas/execution-input.schema';
 
+import type { Queue } from 'bullmq';
+
 import { workflowDefinitionSchema } from '../workflows/schemas/workflow-definition.schema';
+import { InjectQueue } from '@nestjs/bullmq';
+import {
+  EXECUTE_WORKFLOW_JOB,
+  type ExecuteWorkflowJobData,
+  WORKFLOW_EXECUTION_QUEUE,
+} from '@app/queue';
 
 @Injectable()
 export class ExecutionsService {
-  constructor(private readonly database: DatabaseService) {}
+  constructor(
+    private readonly database: DatabaseService,
+    @InjectQueue(WORKFLOW_EXECUTION_QUEUE)
+    private readonly executionQueue: Queue<ExecuteWorkflowJobData>,
+  ) {}
 
   async runManual(userId: string, workflowId: string, dto: RunWorkflowDto) {
     const workflow = await this.database.workflow.findFirst({
@@ -55,7 +68,7 @@ export class ExecutionsService {
       throw new BadRequestException('Invalid execution input');
     }
 
-    return this.database.execution.create({
+    const execution = await this.database.execution.create({
       data: {
         workflowId: workflow.id,
         userId,
@@ -76,6 +89,28 @@ export class ExecutionsService {
         createdAt: true,
       },
     });
+
+    try {
+      await this.executionQueue.add(EXECUTE_WORKFLOW_JOB, {
+        executionId: execution.id,
+      });
+    } catch {
+      await this.database.execution.update({
+        where: {
+          id: execution.id,
+        },
+        data: {
+          status: 'FAILED',
+          error: 'Failed to enqueue execution',
+          finishedAt: new Date(),
+        },
+      });
+
+      throw new ServiceUnavailableException(
+        'Unable to queue workflow execution',
+      );
+    }
+    return execution;
   }
 
   async findAll(userId: string) {
