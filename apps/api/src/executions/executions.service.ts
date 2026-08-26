@@ -12,7 +12,7 @@ import { executionInputSchema } from './schemas/execution-input.schema';
 
 import type { Queue } from 'bullmq';
 
-import { workflowDefinitionSchema } from '../workflows/schemas/workflow-definition.schema';
+import { workflowDefinitionSchema } from '@app/workflow-engine';
 import { InjectQueue } from '@nestjs/bullmq';
 import {
   EXECUTE_WORKFLOW_JOB,

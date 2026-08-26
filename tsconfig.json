@@ -45,6 +45,12 @@
       ],
       "@app/redis/*": [
         "libs/redis/src/*"
+      ],
+      "@app/workflow-engine": [
+        "libs/workflow-engine/src"
+      ],
+      "@app/workflow-engine/*": [
+        "libs/workflow-engine/src/*"
       ]
     },
     "baseUrl": "./"

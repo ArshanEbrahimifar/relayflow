@@ -29,6 +29,14 @@ enum ExecutionTriggerType {
   WEBHOOK
 }
 
+enum StepExecutionStatus {
+  PENDING
+  RUNNING
+  SUCCEEDED
+  FAILED
+  SKIPPED
+}
+
 model User {
   id           String   @id @default(uuid())
   email        String   @unique
@@ -80,7 +88,37 @@ model Execution {
 
   user User @relation(fields: [userId],references: [id],onDelete: Cascade)
 
+  stepExecutions StepExecution[]
+
   @@index([userId, createdAt])
   @@index([workflowId, createdAt])
   @@index([status])
+}
+
+
+model StepExecution {
+  id          String              @id @default(uuid())
+  executionId String
+
+  stepId      String
+  stepType    String
+
+  status      StepExecutionStatus @default(PENDING)
+
+  input       Json?               @db.JsonB
+  output      Json?               @db.JsonB
+
+  error       String?
+  attempt     Int                 @default(1)
+
+  startedAt   DateTime?
+  finishedAt  DateTime?
+
+  createdAt   DateTime            @default(now())
+  updatedAt   DateTime            @updatedAt
+
+  execution Execution @relation(fields: [executionId],references: [id],onDelete: Cascade)
+
+  @@unique([executionId, stepId])
+  @@index([executionId])
 }

@@ -1,5 +1,9 @@
 import { z } from 'zod';
 
+export const workflowDataSchema = z.record(z.string(), z.json());
+
+export type WorkflowData = z.infer<typeof workflowDataSchema>;
+
 const workflowStepSchema = z.object({
   id: z.string().min(1),
 
@@ -17,3 +21,5 @@ export const workflowDefinitionSchema = z.object({
 });
 
 export type WorkflowDefinition = z.infer<typeof workflowDefinitionSchema>;
+
+export type WorkflowStep = z.infer<typeof workflowStepSchema>;

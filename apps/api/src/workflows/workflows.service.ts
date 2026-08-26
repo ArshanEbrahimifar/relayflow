@@ -6,7 +6,7 @@ import {
 import { DatabaseService } from '@app/database';
 
 import { CreateWorkflowDto } from './dto/create-workflow.dto';
-import { workflowDefinitionSchema } from './schemas/workflow-definition.schema';
+import { workflowDefinitionSchema } from '@app/workflow-engine';
 import { UpdateWorkflowDto } from './dto/update-workflow.dto';
 import { isDeepStrictEqual } from 'node:util';
 

@@ -63,6 +63,15 @@
       "compilerOptions": {
         "tsConfigPath": "apps/worker/tsconfig.app.json"
       }
+    },
+    "workflow-engine": {
+      "type": "library",
+      "root": "libs/workflow-engine",
+      "entryFile": "index",
+      "sourceRoot": "libs/workflow-engine/src",
+      "compilerOptions": {
+        "tsConfigPath": "libs/workflow-engine/tsconfig.lib.json"
+      }
     }
   }
 }
