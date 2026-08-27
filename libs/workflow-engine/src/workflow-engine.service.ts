@@ -3,6 +3,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { DatabaseService } from '@app/database';
 
 import {
+  TransformStep,
   WorkflowData,
   WorkflowDefinition,
   WorkflowStep,
@@ -119,12 +120,49 @@ export class WorkflowEngineService {
   }
 
   private executeTransform(
-    step: WorkflowStep,
+    step: TransformStep,
     input: WorkflowData,
   ): WorkflowData {
-    void step;
+    const output: WorkflowData = {};
 
-    return input;
+    const inputPattern = /{{input\.([a-zA-Z0-9_.]+)}}/g;
+
+    for (const [key, value] of Object.entries(step.config.template)) {
+      if (typeof value !== 'string') {
+        output[key] = value;
+        continue;
+      }
+
+      output[key] = value.replace(
+        inputPattern,
+        (match: string, path: string): string => {
+          const resolvedValue = this.resolveInputPath(input, path);
+
+          if (resolvedValue === undefined) {
+            return match;
+          }
+
+          if (typeof resolvedValue === 'string') {
+            return resolvedValue;
+          }
+
+          if (
+            typeof resolvedValue === 'number' ||
+            typeof resolvedValue === 'boolean'
+          ) {
+            return String(resolvedValue);
+          }
+
+          if (resolvedValue === null) {
+            return 'null';
+          }
+
+          return JSON.stringify(resolvedValue);
+        },
+      );
+    }
+
+    return output;
   }
 
   private executeFilter(step: WorkflowStep, input: WorkflowData): WorkflowData {
@@ -140,5 +178,25 @@ export class WorkflowEngineService {
     void step;
 
     return input;
+  }
+
+  private resolveInputPath(input: WorkflowData, path: string): unknown {
+    const parts = path.split('.');
+
+    let current: unknown = input;
+
+    for (const part of parts) {
+      if (
+        typeof current !== 'object' ||
+        current === null ||
+        Array.isArray(current)
+      ) {
+        return undefined;
+      }
+
+      current = (current as Record<string, unknown>)[part];
+    }
+
+    return current;
   }
 }

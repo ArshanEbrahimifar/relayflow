@@ -4,13 +4,43 @@ export const workflowDataSchema = z.record(z.string(), z.json());
 
 export type WorkflowData = z.infer<typeof workflowDataSchema>;
 
-const workflowStepSchema = z.object({
+const transformStepSchema = z.object({
   id: z.string().min(1),
 
-  type: z.enum(['TRANSFORM', 'HTTP_REQUEST', 'FILTER']),
+  type: z.literal('TRANSFORM'),
+
+  config: z.object({
+    template: workflowDataSchema,
+  }),
+});
+
+export type TransformStep = z.infer<typeof transformStepSchema>;
+
+const filterStepSchema = z.object({
+  id: z.string().min(1),
+
+  type: z.literal('FILTER'),
 
   config: z.record(z.string(), z.json()),
 });
+
+export type FilterStep = z.infer<typeof filterStepSchema>;
+
+const httpRequestStepSchema = z.object({
+  id: z.string().min(1),
+
+  type: z.literal('HTTP_REQUEST'),
+
+  config: z.record(z.string(), z.json()),
+});
+
+export type HttpRequestStep = z.infer<typeof httpRequestStepSchema>;
+
+const workflowStepSchema = z.discriminatedUnion('type', [
+  transformStepSchema,
+  filterStepSchema,
+  httpRequestStepSchema,
+]);
 
 export const workflowDefinitionSchema = z.object({
   trigger: z.object({
