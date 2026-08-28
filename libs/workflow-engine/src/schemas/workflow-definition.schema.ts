@@ -21,7 +21,11 @@ const filterStepSchema = z.object({
 
   type: z.literal('FILTER'),
 
-  config: z.record(z.string(), z.json()),
+  config: z.object({
+    field: z.string().min(1),
+    operator: z.enum(['EQUALS', 'NOT_EQUALS', 'GREATER_THAN', 'LESS_THAN']),
+    value: z.json(),
+  }),
 });
 
 export type FilterStep = z.infer<typeof filterStepSchema>;

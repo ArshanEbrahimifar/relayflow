@@ -3,11 +3,17 @@ import { Injectable, Logger } from '@nestjs/common';
 import { DatabaseService } from '@app/database';
 
 import {
+  FilterStep,
   TransformStep,
   WorkflowData,
   WorkflowDefinition,
   WorkflowStep,
 } from './schemas/workflow-definition.schema';
+
+type StepResult = {
+  output: WorkflowData;
+  shouldContinue: boolean;
+};
 
 @Injectable()
 export class WorkflowEngineService {
@@ -33,7 +39,7 @@ export class WorkflowEngineService {
 
     let currentData: WorkflowData = triggerPayload;
 
-    for (const step of definition.steps) {
+    for (const [index, step] of definition.steps.entries()) {
       await this.database.stepExecution.update({
         where: {
           executionId_stepId: {
@@ -41,7 +47,6 @@ export class WorkflowEngineService {
             stepId: step.id,
           },
         },
-
         data: {
           status: 'RUNNING',
           startedAt: new Date(),
@@ -51,7 +56,9 @@ export class WorkflowEngineService {
       });
 
       try {
-        currentData = await this.executeStep(step, currentData);
+        const result = await this.executeStep(step, currentData);
+
+        currentData = result.output;
 
         await this.database.stepExecution.update({
           where: {
@@ -60,10 +67,9 @@ export class WorkflowEngineService {
               stepId: step.id,
             },
           },
-
           data: {
             status: 'SUCCEEDED',
-            output: currentData,
+            output: result.output,
             finishedAt: new Date(),
           },
         });
@@ -71,6 +77,34 @@ export class WorkflowEngineService {
         this.logger.log(
           `Step ${step.id} succeeded for execution ${executionId}`,
         );
+
+        if (!result.shouldContinue) {
+          const remainingStepIds = definition.steps
+            .slice(index + 1)
+            .map((remainingStep) => remainingStep.id);
+
+          if (remainingStepIds.length > 0) {
+            await this.database.stepExecution.updateMany({
+              where: {
+                executionId,
+                stepId: {
+                  in: remainingStepIds,
+                },
+                status: 'PENDING',
+              },
+              data: {
+                status: 'SKIPPED',
+                finishedAt: new Date(),
+              },
+            });
+          }
+
+          this.logger.log(
+            `Execution ${executionId} stopped after step ${step.id}`,
+          );
+
+          break;
+        }
       } catch (error) {
         const message =
           error instanceof Error
@@ -84,7 +118,6 @@ export class WorkflowEngineService {
               stepId: step.id,
             },
           },
-
           data: {
             status: 'FAILED',
             error: message,
@@ -104,18 +137,34 @@ export class WorkflowEngineService {
   private executeStep(
     step: WorkflowStep,
     input: WorkflowData,
-  ): WorkflowData | Promise<WorkflowData> {
-    this.logger.log(`Executing step ${step.id} (${step.type})`);
-
+  ): StepResult | Promise<StepResult> {
     switch (step.type) {
-      case 'TRANSFORM':
-        return this.executeTransform(step, input);
+      case 'TRANSFORM': {
+        const output = this.executeTransform(step, input);
 
-      case 'FILTER':
-        return this.executeFilter(step, input);
+        return {
+          output,
+          shouldContinue: true,
+        };
+      }
 
-      case 'HTTP_REQUEST':
-        return this.executeHttpRequest(step, input);
+      case 'FILTER': {
+        const shouldContinue = this.executeFilter(step, input);
+
+        return {
+          output: input,
+          shouldContinue,
+        };
+      }
+
+      case 'HTTP_REQUEST': {
+        const output = this.executeHttpRequest(step, input);
+
+        return {
+          output,
+          shouldContinue: true,
+        };
+      }
     }
   }
 
@@ -165,10 +214,38 @@ export class WorkflowEngineService {
     return output;
   }
 
-  private executeFilter(step: WorkflowStep, input: WorkflowData): WorkflowData {
-    void step;
+  private executeFilter(step: FilterStep, input: WorkflowData): boolean {
+    const actualValue = this.resolveInputPath(input, step.config.field);
 
-    return input;
+    const expectedValue = step.config.value;
+
+    switch (step.config.operator) {
+      case 'EQUALS':
+        return actualValue === expectedValue;
+
+      case 'NOT_EQUALS':
+        return actualValue !== expectedValue;
+
+      case 'GREATER_THAN':
+        if (
+          typeof actualValue !== 'number' ||
+          typeof expectedValue !== 'number'
+        ) {
+          return false;
+        }
+
+        return actualValue > expectedValue;
+
+      case 'LESS_THAN':
+        if (
+          typeof actualValue !== 'number' ||
+          typeof expectedValue !== 'number'
+        ) {
+          return false;
+        }
+
+        return actualValue < expectedValue;
+    }
   }
 
   private executeHttpRequest(
