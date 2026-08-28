@@ -35,7 +35,12 @@ const httpRequestStepSchema = z.object({
 
   type: z.literal('HTTP_REQUEST'),
 
-  config: z.record(z.string(), z.json()),
+  config: z.object({
+    method: z.enum(['GET', 'POST', 'PUT', 'PATCH', 'DELETE']),
+    url: z.url(),
+    headers: z.record(z.string(), z.string()).optional(),
+    body: z.json().optional(),
+  }),
 });
 
 export type HttpRequestStep = z.infer<typeof httpRequestStepSchema>;

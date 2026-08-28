@@ -4,8 +4,10 @@ import { DatabaseService } from '@app/database';
 
 import {
   FilterStep,
+  HttpRequestStep,
   TransformStep,
   WorkflowData,
+  workflowDataSchema,
   WorkflowDefinition,
   WorkflowStep,
 } from './schemas/workflow-definition.schema';
@@ -134,10 +136,10 @@ export class WorkflowEngineService {
     }
   }
 
-  private executeStep(
+  private async executeStep(
     step: WorkflowStep,
     input: WorkflowData,
-  ): StepResult | Promise<StepResult> {
+  ): Promise<StepResult> {
     switch (step.type) {
       case 'TRANSFORM': {
         const output = this.executeTransform(step, input);
@@ -158,7 +160,7 @@ export class WorkflowEngineService {
       }
 
       case 'HTTP_REQUEST': {
-        const output = this.executeHttpRequest(step, input);
+        const output = await this.executeHttpRequest(step, input);
 
         return {
           output,
@@ -248,13 +250,52 @@ export class WorkflowEngineService {
     }
   }
 
-  private executeHttpRequest(
-    step: WorkflowStep,
+  private async executeHttpRequest(
+    step: HttpRequestStep,
     input: WorkflowData,
-  ): WorkflowData {
-    void step;
+  ): Promise<WorkflowData> {
+    void input;
 
-    return input;
+    const { method, url, headers, body } = step.config;
+
+    const requestBody =
+      method !== 'GET' && body !== undefined ? JSON.stringify(body) : undefined;
+
+    const requestHeaders = new Headers(headers);
+
+    if (requestBody !== undefined && !requestHeaders.has('content-type')) {
+      requestHeaders.set('content-type', 'application/json');
+    }
+
+    const response = await fetch(url, {
+      method,
+      headers: requestHeaders,
+      body: requestBody,
+    });
+
+    if (!response.ok) {
+      throw new Error(`HTTP request failed with status ${response.status}`);
+    }
+
+    if (response.status === 204) {
+      return {};
+    }
+
+    const contentType = response.headers.get('content-type');
+
+    if (!contentType?.includes('application/json')) {
+      throw new Error('HTTP response is not JSON');
+    }
+
+    const data: unknown = await response.json();
+
+    const parsedData = workflowDataSchema.safeParse(data);
+
+    if (!parsedData.success) {
+      throw new Error('HTTP response is not a valid workflow data object');
+    }
+
+    return parsedData.data;
   }
 
   private resolveInputPath(input: WorkflowData, path: string): unknown {
