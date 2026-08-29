@@ -9,6 +9,7 @@ import { CreateWorkflowDto } from './dto/create-workflow.dto';
 import { workflowDefinitionSchema } from '@app/workflow-engine';
 import { UpdateWorkflowDto } from './dto/update-workflow.dto';
 import { isDeepStrictEqual } from 'node:util';
+import { randomBytes } from 'node:crypto';
 
 @Injectable()
 export class WorkflowsService {
@@ -21,11 +22,17 @@ export class WorkflowsService {
       throw new BadRequestException('Invalid workflow definition');
     }
 
+    const webhookToken =
+      parsedDefinition.data.trigger.type === 'WEBHOOK'
+        ? randomBytes(32).toString('hex')
+        : null;
+
     return await this.database.workflow.create({
       data: {
         userId,
         name: dto.name.trim(),
         definition: parsedDefinition.data,
+        webhookToken,
       },
       select: {
         id: true,
@@ -119,6 +126,15 @@ export class WorkflowsService {
         parsedDefinition,
       );
     }
+    let webhookToken = workflow.webhookToken;
+
+    if (parsedDefinition !== undefined) {
+      if (parsedDefinition.trigger.type === 'WEBHOOK') {
+        webhookToken ??= randomBytes(32).toString('hex');
+      } else {
+        webhookToken = null;
+      }
+    }
 
     const nameChanged =
       normalizedName !== undefined && normalizedName !== workflow.name;
@@ -141,6 +157,7 @@ export class WorkflowsService {
           version: {
             increment: 1,
           },
+          webhookToken,
         }),
       },
       select: {

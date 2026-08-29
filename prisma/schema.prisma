@@ -55,6 +55,9 @@ model Workflow {
   status     WorkflowStatus @default(DRAFT)
   definition Json           @db.JsonB
   version    Int            @default(1)
+
+  webhookToken     String?    @unique
+
   createdAt  DateTime       @default(now())
   updatedAt  DateTime       @updatedAt
 
