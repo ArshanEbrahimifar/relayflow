@@ -25,7 +25,7 @@ export class WebhooksService {
     private readonly webhookExecutionQueue: Queue<ExecuteWorkflowJobData>,
   ) {}
 
-  async receive(token: string, payload: unknown) {
+  async receive(token: string, payload: unknown, idempotencyKey?: string) {
     const workflow = await this.database.workflow.findUnique({
       where: {
         webhookToken: token,
@@ -64,18 +64,58 @@ export class WebhooksService {
       throw new BadRequestException('Invalid webhook payload');
     }
 
-    const execution = await this.database.execution.create({
-      data: {
-        userId: workflow.userId,
-        workflowId: workflow.id,
+    const normalizedIdempotencyKey = idempotencyKey?.trim() || undefined;
 
-        workflowVersion: workflow.version,
-        workflowSnapshot: parsedDefinition.data,
+    if (normalizedIdempotencyKey) {
+      const existingExecution = await this.database.execution.findUnique({
+        where: {
+          workflowId_idempotencyKey: {
+            workflowId: workflow.id,
+            idempotencyKey: normalizedIdempotencyKey,
+          },
+        },
+      });
 
-        triggerType: 'WEBHOOK',
-        triggerPayload: parsedPayload.data,
-      },
-    });
+      if (existingExecution) {
+        return existingExecution;
+      }
+    }
+
+    let execution;
+
+    try {
+      execution = await this.database.execution.create({
+        data: {
+          userId: workflow.userId,
+
+          workflowId: workflow.id,
+          workflowVersion: workflow.version,
+          workflowSnapshot: parsedDefinition.data,
+
+          triggerType: 'WEBHOOK',
+          triggerPayload: parsedPayload.data,
+
+          idempotencyKey: normalizedIdempotencyKey,
+        },
+      });
+    } catch (error) {
+      if (normalizedIdempotencyKey && this.isUniqueConstraintError(error)) {
+        const existingExecution = await this.database.execution.findUnique({
+          where: {
+            workflowId_idempotencyKey: {
+              workflowId: workflow.id,
+              idempotencyKey: normalizedIdempotencyKey,
+            },
+          },
+        });
+
+        if (existingExecution) {
+          return existingExecution;
+        }
+      }
+
+      throw error;
+    }
 
     try {
       await this.webhookExecutionQueue.add(EXECUTE_WORKFLOW_JOB, {
@@ -99,5 +139,14 @@ export class WebhooksService {
     }
 
     return execution;
+  }
+
+  private isUniqueConstraintError(error: unknown): error is { code: string } {
+    return (
+      typeof error === 'object' &&
+      error !== null &&
+      'code' in error &&
+      (error as { code?: unknown }).code === 'P2002'
+    );
   }
 }

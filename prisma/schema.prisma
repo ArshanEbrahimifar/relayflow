@@ -78,6 +78,8 @@ model Execution {
   triggerType      ExecutionTriggerType
   triggerPayload   Json                 @db.JsonB
 
+
+  idempotencyKey   String?
   status           ExecutionStatus      @default(QUEUED)
 
   error            String?
@@ -93,6 +95,7 @@ model Execution {
 
   stepExecutions StepExecution[]
 
+  @@unique([workflowId, idempotencyKey])
   @@index([userId, createdAt])
   @@index([workflowId, createdAt])
   @@index([status])

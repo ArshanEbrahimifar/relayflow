@@ -1,6 +1,7 @@
 import {
   Body,
   Controller,
+  Headers,
   HttpCode,
   HttpStatus,
   Param,
@@ -15,7 +16,11 @@ export class WebhooksController {
 
   @Post(':token')
   @HttpCode(HttpStatus.ACCEPTED)
-  receive(@Param('token') token: string, @Body() payload: unknown) {
-    return this.webhooksService.receive(token, payload);
+  receive(
+    @Param('token') token: string,
+    @Body() payload: unknown,
+    @Headers('idempotency-key') idempotencyKey?: string,
+  ) {
+    return this.webhooksService.receive(token, payload, idempotencyKey);
   }
 }
