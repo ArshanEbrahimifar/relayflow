@@ -20,6 +20,13 @@ import { WORKFLOW_EXECUTION_QUEUE } from './queue.constants';
 
     BullModule.registerQueue({
       name: WORKFLOW_EXECUTION_QUEUE,
+      defaultJobOptions: {
+        attempts: 3,
+        backoff: {
+          type: 'exponential',
+          delay: 2000,
+        },
+      },
     }),
   ],
 

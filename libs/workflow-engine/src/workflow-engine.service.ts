@@ -42,6 +42,34 @@ export class WorkflowEngineService {
     let currentData: WorkflowData = triggerPayload;
 
     for (const [index, step] of definition.steps.entries()) {
+      const existingStepExecution =
+        await this.database.stepExecution.findUnique({
+          where: {
+            executionId_stepId: {
+              executionId,
+              stepId: step.id,
+            },
+          },
+          select: {
+            status: true,
+            output: true,
+          },
+        });
+
+      if (existingStepExecution?.status === 'SUCCEEDED') {
+        const parsedOutput = workflowDataSchema.safeParse(
+          existingStepExecution.output,
+        );
+
+        if (!parsedOutput.success) {
+          throw new Error(`Stored output for step ${step.id} is invalid`);
+        }
+
+        currentData = parsedOutput.data;
+
+        continue;
+      }
+
       await this.database.stepExecution.update({
         where: {
           executionId_stepId: {
@@ -54,6 +82,13 @@ export class WorkflowEngineService {
           startedAt: new Date(),
           error: null,
           input: currentData,
+
+          finishedAt: null,
+          ...(existingStepExecution?.status !== 'PENDING' && {
+            attempt: {
+              increment: 1,
+            },
+          }),
         },
       });
 

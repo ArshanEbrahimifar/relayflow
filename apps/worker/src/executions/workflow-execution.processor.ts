@@ -30,6 +30,8 @@ export class WorkflowExecutionProcessor extends WorkerHost {
   async process(job: Job<ExecuteWorkflowJobData>): Promise<void> {
     const { executionId } = job.data;
 
+    const attemptNumber = job.attemptsMade + 1;
+
     const execution = await this.database.execution.findUnique({
       where: {
         id: executionId,
@@ -40,7 +42,9 @@ export class WorkflowExecutionProcessor extends WorkerHost {
       throw new Error(`Execution ${executionId} not found`);
     }
 
-    this.logger.log(`Processing execution ${executionId}`);
+    this.logger.log(
+      `Processing execution ${executionId}, attempt ${attemptNumber}`,
+    );
 
     await this.database.execution.update({
       where: {
@@ -93,6 +97,11 @@ export class WorkflowExecutionProcessor extends WorkerHost {
     } catch (error) {
       const message =
         error instanceof Error ? error.message : 'Unknown execution error';
+      const maxAttempts = job.opts.attempts ?? 1;
+
+      const currentAttempt = job.attemptsMade + 1;
+
+      const isFinalAttempt = currentAttempt >= maxAttempts;
 
       await this.database.execution.update({
         where: {
@@ -100,13 +109,23 @@ export class WorkflowExecutionProcessor extends WorkerHost {
         },
 
         data: {
-          status: 'FAILED',
+          ...(isFinalAttempt ? { status: 'FAILED' } : { status: 'RUNNING' }),
           error: message,
-          finishedAt: new Date(),
+          ...(isFinalAttempt
+            ? { finishedAt: new Date() }
+            : { finishedAt: null }),
         },
       });
 
-      this.logger.error(`Execution ${executionId} failed: ${message}`);
+      if (isFinalAttempt) {
+        this.logger.error(
+          `Execution ${executionId} failed after ${currentAttempt} attempts: ${message}`,
+        );
+      } else {
+        this.logger.warn(
+          `Execution ${executionId} attempt ${currentAttempt} failed, retrying: ${message}`,
+        );
+      }
 
       throw error;
     }
