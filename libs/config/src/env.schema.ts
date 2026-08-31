@@ -16,4 +16,6 @@ export const envSchema = z.object({
   JWT_SECRET: z.string().min(32),
 
   JWT_ACCESS_TTL_SECONDS: z.coerce.number().int().positive().default(900),
+
+  CREDENTIAL_ENCRYPTION_KEY: z.string().regex(/^[a-fA-F0-9]{64}$/),
 });

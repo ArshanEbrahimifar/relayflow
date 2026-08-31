@@ -89,6 +89,7 @@
     "moduleNameMapper": {
       "^@app/config(|/.*)$": "<rootDir>/libs/config/src/$1",
       "^@app/database(|/.*)$": "<rootDir>/libs/database/src/$1",
+      "^@app/encryption(|/.*)$": "<rootDir>/libs/encryption/src/$1",
       "^@app/queue(|/.*)$": "<rootDir>/libs/queue/src/$1",
       "^@app/redis(|/.*)$": "<rootDir>/libs/redis/src/$1",
       "^@app/workflow-engine(|/.*)$": "<rootDir>/libs/workflow-engine/src/$1"

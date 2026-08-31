@@ -34,6 +34,12 @@
       "@app/database/*": [
         "libs/database/src/*"
       ],
+      "@app/encryption": [
+        "libs/encryption/src"
+      ],
+      "@app/encryption/*": [
+        "libs/encryption/src/*"
+      ],
       "@app/queue": [
         "libs/queue/src"
       ],
