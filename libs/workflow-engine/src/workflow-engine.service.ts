@@ -11,20 +11,30 @@ import {
   WorkflowDefinition,
   WorkflowStep,
 } from './schemas/workflow-definition.schema';
+import { EncryptionService } from '@app/encryption';
+
+import { z } from 'zod';
 
 type StepResult = {
   output: WorkflowData;
   shouldContinue: boolean;
 };
 
+const bearerTokenCredentialSchema = z.object({
+  token: z.string().min(1),
+});
 @Injectable()
 export class WorkflowEngineService {
   private readonly logger = new Logger(WorkflowEngineService.name);
 
-  constructor(private readonly database: DatabaseService) {}
+  constructor(
+    private readonly database: DatabaseService,
+    private readonly encryption: EncryptionService,
+  ) {}
 
   async execute(
     executionId: string,
+    userId: string,
     definition: WorkflowDefinition,
     triggerPayload: WorkflowData,
   ): Promise<void> {
@@ -93,7 +103,7 @@ export class WorkflowEngineService {
       });
 
       try {
-        const result = await this.executeStep(step, currentData);
+        const result = await this.executeStep(step, currentData, userId);
 
         currentData = result.output;
 
@@ -174,6 +184,7 @@ export class WorkflowEngineService {
   private async executeStep(
     step: WorkflowStep,
     input: WorkflowData,
+    userId: string,
   ): Promise<StepResult> {
     switch (step.type) {
       case 'TRANSFORM': {
@@ -195,7 +206,7 @@ export class WorkflowEngineService {
       }
 
       case 'HTTP_REQUEST': {
-        const output = await this.executeHttpRequest(step, input);
+        const output = await this.executeHttpRequest(step, input, userId);
 
         return {
           output,
@@ -288,15 +299,61 @@ export class WorkflowEngineService {
   private async executeHttpRequest(
     step: HttpRequestStep,
     input: WorkflowData,
+    userId: string,
   ): Promise<WorkflowData> {
     void input;
 
-    const { method, url, headers, body } = step.config;
+    const { method, url, headers, body, credentialId } = step.config;
+
+    let credential;
+
+    if (credentialId) {
+      credential = await this.database.credential.findFirst({
+        where: {
+          id: credentialId,
+          userId,
+        },
+        select: {
+          type: true,
+          ciphertext: true,
+          iv: true,
+          authTag: true,
+        },
+      });
+
+      if (!credential) {
+        throw new Error(`Credential ${credentialId} not found`);
+      }
+    }
+
+    const requestHeaders = new Headers(headers);
+
+    if (credential) {
+      if (credential.type !== 'BEARER_TOKEN') {
+        throw new Error(`Unsupported credential type: ${credential.type}`);
+      }
+
+      const decryptedData = this.encryption.decrypt({
+        ciphertext: credential.ciphertext,
+        iv: credential.iv,
+        authTag: credential.authTag,
+      });
+
+      const parsedCredential =
+        bearerTokenCredentialSchema.safeParse(decryptedData);
+
+      if (!parsedCredential.success) {
+        throw new Error(`Credential ${credentialId} contains invalid data`);
+      }
+
+      requestHeaders.set(
+        'authorization',
+        `Bearer ${parsedCredential.data.token}`,
+      );
+    }
 
     const requestBody =
       method !== 'GET' && body !== undefined ? JSON.stringify(body) : undefined;
-
-    const requestHeaders = new Headers(headers);
 
     if (requestBody !== undefined && !requestHeaders.has('content-type')) {
       requestHeaders.set('content-type', 'application/json');

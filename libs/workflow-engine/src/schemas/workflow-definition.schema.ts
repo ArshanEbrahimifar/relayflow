@@ -40,6 +40,7 @@ const httpRequestStepSchema = z.object({
     url: z.url(),
     headers: z.record(z.string(), z.string()).optional(),
     body: z.json().optional(),
+    credentialId: z.uuid().optional(),
   }),
 });
 

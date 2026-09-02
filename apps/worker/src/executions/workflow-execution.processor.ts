@@ -78,6 +78,7 @@ export class WorkflowExecutionProcessor extends WorkerHost {
 
       await this.workflowEngine.execute(
         execution.id,
+        execution.userId,
         parsedDefinition.data,
         parsedTriggerPayload.data,
       );
