@@ -14,6 +14,8 @@ import {
 import { EncryptionService } from '@app/encryption';
 
 import { z } from 'zod';
+import { validateHttpUrl } from './security/validate-http-url';
+import { safeFetch } from './security/safe-fetch';
 
 type StepResult = {
   output: WorkflowData;
@@ -359,7 +361,9 @@ export class WorkflowEngineService {
       requestHeaders.set('content-type', 'application/json');
     }
 
-    const response = await fetch(url, {
+    const validatedUrl = await validateHttpUrl(url);
+
+    const response = await safeFetch(validatedUrl, {
       method,
       headers: requestHeaders,
       body: requestBody,
