@@ -17,6 +17,7 @@ import { InjectQueue } from '@nestjs/bullmq';
 import {
   EXECUTE_WORKFLOW_JOB,
   type ExecuteWorkflowJobData,
+  QueueCapacityService,
   WORKFLOW_EXECUTION_QUEUE,
 } from '@app/queue';
 
@@ -26,6 +27,7 @@ export class ExecutionsService {
     private readonly database: DatabaseService,
     @InjectQueue(WORKFLOW_EXECUTION_QUEUE)
     private readonly executionQueue: Queue<ExecuteWorkflowJobData>,
+    private readonly queueCapacity: QueueCapacityService,
   ) {}
 
   async runManual(userId: string, workflowId: string, dto: RunWorkflowDto) {
@@ -67,7 +69,13 @@ export class ExecutionsService {
     if (!parsedInput.success) {
       throw new BadRequestException('Invalid execution input');
     }
+    const hasCapacity = await this.queueCapacity.hasCapacity();
 
+    if (!hasCapacity) {
+      throw new ServiceUnavailableException(
+        'Workflow execution queue is at capacity',
+      );
+    }
     const execution = await this.database.execution.create({
       data: {
         workflowId: workflow.id,

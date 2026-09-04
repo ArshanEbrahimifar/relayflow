@@ -2,6 +2,7 @@ import { DatabaseService } from '@app/database';
 import {
   EXECUTE_WORKFLOW_JOB,
   ExecuteWorkflowJobData,
+  QueueCapacityService,
   WORKFLOW_EXECUTION_QUEUE,
 } from '@app/queue';
 import { RateLimitService } from '@app/rate-limit';
@@ -26,6 +27,7 @@ export class WebhooksService {
     @InjectQueue(WORKFLOW_EXECUTION_QUEUE)
     private readonly webhookExecutionQueue: Queue<ExecuteWorkflowJobData>,
     private readonly rateLimit: RateLimitService,
+    private readonly queueCapacity: QueueCapacityService,
   ) {}
 
   async receive(token: string, payload: unknown, idempotencyKey?: string) {
@@ -92,6 +94,13 @@ export class WebhooksService {
       if (existingExecution) {
         return existingExecution;
       }
+    }
+    const hasCapacity = await this.queueCapacity.hasCapacity();
+
+    if (!hasCapacity) {
+      throw new ServiceUnavailableException(
+        'Workflow execution queue is at capacity',
+      );
     }
 
     let execution;

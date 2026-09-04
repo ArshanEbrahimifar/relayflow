@@ -16,7 +16,13 @@ import {
   workflowDefinitionSchema,
 } from '@app/workflow-engine';
 
-@Processor(WORKFLOW_EXECUTION_QUEUE)
+@Processor(WORKFLOW_EXECUTION_QUEUE, {
+  concurrency: 5,
+  limiter: {
+    max: 20,
+    duration: 1000,
+  },
+})
 export class WorkflowExecutionProcessor extends WorkerHost {
   private readonly logger = new Logger(WorkflowExecutionProcessor.name);
 
@@ -31,6 +37,12 @@ export class WorkflowExecutionProcessor extends WorkerHost {
     const { executionId } = job.data;
 
     const attemptNumber = job.attemptsMade + 1;
+
+    const workerProcessId = process.pid;
+
+    this.logger.log(
+      `Worker PID ${workerProcessId} processing execution ${executionId}, attempt ${attemptNumber}`,
+    );
 
     const execution = await this.database.execution.findUnique({
       where: {

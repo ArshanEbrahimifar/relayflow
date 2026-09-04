@@ -3,6 +3,7 @@ import { ConfigService } from '@nestjs/config';
 import { BullModule } from '@nestjs/bullmq';
 
 import { WORKFLOW_EXECUTION_QUEUE } from './queue.constants';
+import { QueueCapacityService } from './queue-capacity.service';
 
 @Module({
   imports: [
@@ -30,6 +31,6 @@ import { WORKFLOW_EXECUTION_QUEUE } from './queue.constants';
     }),
   ],
 
-  exports: [BullModule],
+  exports: [BullModule, QueueCapacityService],
 })
 export class QueueModule {}
