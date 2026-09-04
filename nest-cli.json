@@ -55,6 +55,15 @@
         "tsConfigPath": "libs/queue/tsconfig.lib.json"
       }
     },
+    "rate-limit": {
+      "type": "library",
+      "root": "libs/rate-limit",
+      "entryFile": "index",
+      "sourceRoot": "libs/rate-limit/src",
+      "compilerOptions": {
+        "tsConfigPath": "libs/rate-limit/tsconfig.lib.json"
+      }
+    },
     "redis": {
       "type": "library",
       "root": "libs/redis",

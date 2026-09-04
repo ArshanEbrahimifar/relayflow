@@ -46,6 +46,12 @@
       "@app/queue/*": [
         "libs/queue/src/*"
       ],
+      "@app/rate-limit": [
+        "libs/rate-limit/src"
+      ],
+      "@app/rate-limit/*": [
+        "libs/rate-limit/src/*"
+      ],
       "@app/redis": [
         "libs/redis/src"
       ],

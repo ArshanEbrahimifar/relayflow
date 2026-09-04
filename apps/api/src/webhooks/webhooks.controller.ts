@@ -6,10 +6,13 @@ import {
   HttpStatus,
   Param,
   Post,
+  UseFilters,
 } from '@nestjs/common';
 
 import { WebhooksService } from './webhooks.service';
+import { WebhookRateLimitFilter } from './filters/webhook-rate-limit.filter';
 
+@UseFilters(WebhookRateLimitFilter)
 @Controller('webhooks')
 export class WebhooksController {
   constructor(private readonly webhooksService: WebhooksService) {}

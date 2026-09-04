@@ -4,6 +4,7 @@ import {
   ExecuteWorkflowJobData,
   WORKFLOW_EXECUTION_QUEUE,
 } from '@app/queue';
+import { RateLimitService } from '@app/rate-limit';
 import {
   workflowDataSchema,
   workflowDefinitionSchema,
@@ -16,6 +17,7 @@ import {
   ServiceUnavailableException,
 } from '@nestjs/common';
 import { Queue } from 'bullmq';
+import { WebhookRateLimitException } from './exceptions/webhook-rate-limit.exception';
 
 @Injectable()
 export class WebhooksService {
@@ -23,6 +25,7 @@ export class WebhooksService {
     private readonly database: DatabaseService,
     @InjectQueue(WORKFLOW_EXECUTION_QUEUE)
     private readonly webhookExecutionQueue: Queue<ExecuteWorkflowJobData>,
+    private readonly rateLimit: RateLimitService,
   ) {}
 
   async receive(token: string, payload: unknown, idempotencyKey?: string) {
@@ -41,6 +44,16 @@ export class WebhooksService {
 
     if (!workflow) {
       throw new NotFoundException('Workflow does not exist');
+    }
+
+    const rateLimitResult = await this.rateLimit.consume(
+      `rate-limit:webhook:${workflow.id}`,
+      60,
+      60,
+    );
+
+    if (!rateLimitResult.allowed) {
+      throw new WebhookRateLimitException(rateLimitResult.retryAfterSeconds);
     }
 
     const parsedDefinition = workflowDefinitionSchema.safeParse(
