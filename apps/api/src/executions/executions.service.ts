@@ -21,6 +21,8 @@ import {
   WORKFLOW_EXECUTION_QUEUE,
 } from '@app/queue';
 
+import { context, propagation } from '@opentelemetry/api';
+
 @Injectable()
 export class ExecutionsService {
   constructor(
@@ -99,8 +101,13 @@ export class ExecutionsService {
     });
 
     try {
+      const traceContext: Record<string, string> = {};
+
+      propagation.inject(context.active(), traceContext);
+
       await this.executionQueue.add(EXECUTE_WORKFLOW_JOB, {
         executionId: execution.id,
+        traceContext,
       });
     } catch {
       await this.database.execution.update({

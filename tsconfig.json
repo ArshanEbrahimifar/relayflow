@@ -40,6 +40,12 @@
       "@app/encryption/*": [
         "libs/encryption/src/*"
       ],
+      "@app/observability": [
+        "libs/observability/src"
+      ],
+      "@app/observability/*": [
+        "libs/observability/src/*"
+      ],
       "@app/queue": [
         "libs/queue/src"
       ],

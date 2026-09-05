@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
 
 import { DatabaseService } from '@app/database';
 
@@ -16,22 +16,26 @@ import { EncryptionService } from '@app/encryption';
 import { z } from 'zod';
 import { validateHttpUrl } from './security/validate-http-url';
 import { safeFetch } from './security/safe-fetch';
-
+import { InjectPinoLogger, PinoLogger } from 'nestjs-pino';
 type StepResult = {
   output: WorkflowData;
   shouldContinue: boolean;
 };
+
+import { SpanStatusCode, trace } from '@opentelemetry/api';
 
 const bearerTokenCredentialSchema = z.object({
   token: z.string().min(1),
 });
 @Injectable()
 export class WorkflowEngineService {
-  private readonly logger = new Logger(WorkflowEngineService.name);
+  private readonly tracer = trace.getTracer('relayflow-workflow-engine');
 
   constructor(
     private readonly database: DatabaseService,
     private readonly encryption: EncryptionService,
+    @InjectPinoLogger(WorkflowEngineService.name)
+    private readonly logger: PinoLogger,
   ) {}
 
   async execute(
@@ -40,147 +44,200 @@ export class WorkflowEngineService {
     definition: WorkflowDefinition,
     triggerPayload: WorkflowData,
   ): Promise<void> {
-    const stepExecutions = definition.steps.map((step) => ({
-      executionId,
-      stepId: step.id,
-      stepType: step.type,
-    }));
+    return this.tracer.startActiveSpan(
+      'workflow.execute',
+      {
+        attributes: {
+          'relayflow.execution.id': executionId,
 
-    await this.database.stepExecution.createMany({
-      data: stepExecutions,
-      skipDuplicates: true,
-    });
-
-    let currentData: WorkflowData = triggerPayload;
-
-    for (const [index, step] of definition.steps.entries()) {
-      const existingStepExecution =
-        await this.database.stepExecution.findUnique({
-          where: {
-            executionId_stepId: {
-              executionId,
-              stepId: step.id,
-            },
-          },
-          select: {
-            status: true,
-            output: true,
-          },
-        });
-
-      if (existingStepExecution?.status === 'SUCCEEDED') {
-        const parsedOutput = workflowDataSchema.safeParse(
-          existingStepExecution.output,
-        );
-
-        if (!parsedOutput.success) {
-          throw new Error(`Stored output for step ${step.id} is invalid`);
-        }
-
-        currentData = parsedOutput.data;
-
-        continue;
-      }
-
-      await this.database.stepExecution.update({
-        where: {
-          executionId_stepId: {
+          'relayflow.workflow.step_count': definition.steps.length,
+        },
+      },
+      async (span) => {
+        try {
+          const stepExecutions = definition.steps.map((step) => ({
             executionId,
             stepId: step.id,
-          },
-        },
-        data: {
-          status: 'RUNNING',
-          startedAt: new Date(),
-          error: null,
-          input: currentData,
+            stepType: step.type,
+          }));
 
-          finishedAt: null,
-          ...(existingStepExecution?.status !== 'PENDING' && {
-            attempt: {
-              increment: 1,
-            },
-          }),
-        },
-      });
+          await this.database.stepExecution.createMany({
+            data: stepExecutions,
+            skipDuplicates: true,
+          });
 
-      try {
-        const result = await this.executeStep(step, currentData, userId);
+          let currentData: WorkflowData = triggerPayload;
 
-        currentData = result.output;
-
-        await this.database.stepExecution.update({
-          where: {
-            executionId_stepId: {
-              executionId,
-              stepId: step.id,
-            },
-          },
-          data: {
-            status: 'SUCCEEDED',
-            output: result.output,
-            finishedAt: new Date(),
-          },
-        });
-
-        this.logger.log(
-          `Step ${step.id} succeeded for execution ${executionId}`,
-        );
-
-        if (!result.shouldContinue) {
-          const remainingStepIds = definition.steps
-            .slice(index + 1)
-            .map((remainingStep) => remainingStep.id);
-
-          if (remainingStepIds.length > 0) {
-            await this.database.stepExecution.updateMany({
-              where: {
-                executionId,
-                stepId: {
-                  in: remainingStepIds,
+          for (const [index, step] of definition.steps.entries()) {
+            const existingStepExecution =
+              await this.database.stepExecution.findUnique({
+                where: {
+                  executionId_stepId: {
+                    executionId,
+                    stepId: step.id,
+                  },
                 },
-                status: 'PENDING',
+                select: {
+                  status: true,
+                  output: true,
+                },
+              });
+
+            if (existingStepExecution?.status === 'SUCCEEDED') {
+              const parsedOutput = workflowDataSchema.safeParse(
+                existingStepExecution.output,
+              );
+
+              if (!parsedOutput.success) {
+                throw new Error(`Stored output for step ${step.id} is invalid`);
+              }
+
+              currentData = parsedOutput.data;
+
+              continue;
+            }
+
+            await this.database.stepExecution.update({
+              where: {
+                executionId_stepId: {
+                  executionId,
+                  stepId: step.id,
+                },
               },
               data: {
-                status: 'SKIPPED',
-                finishedAt: new Date(),
+                status: 'RUNNING',
+                startedAt: new Date(),
+                error: null,
+                input: currentData,
+
+                finishedAt: null,
+                ...(existingStepExecution?.status !== 'PENDING' && {
+                  attempt: {
+                    increment: 1,
+                  },
+                }),
               },
             });
+
+            try {
+              const result = await this.executeStepWithTracing(
+                executionId,
+                step,
+                currentData,
+                userId,
+              );
+
+              currentData = result.output;
+
+              await this.database.stepExecution.update({
+                where: {
+                  executionId_stepId: {
+                    executionId,
+                    stepId: step.id,
+                  },
+                },
+                data: {
+                  status: 'SUCCEEDED',
+                  output: result.output,
+                  finishedAt: new Date(),
+                },
+              });
+
+              this.logger.info(
+                {
+                  executionId,
+                  stepId: step.id,
+                  stepType: step.type,
+                },
+                'Workflow step succeeded',
+              );
+
+              if (!result.shouldContinue) {
+                const remainingStepIds = definition.steps
+                  .slice(index + 1)
+                  .map((remainingStep) => remainingStep.id);
+
+                if (remainingStepIds.length > 0) {
+                  await this.database.stepExecution.updateMany({
+                    where: {
+                      executionId,
+                      stepId: {
+                        in: remainingStepIds,
+                      },
+                      status: 'PENDING',
+                    },
+                    data: {
+                      status: 'SKIPPED',
+                      finishedAt: new Date(),
+                    },
+                  });
+                }
+
+                this.logger.info(
+                  {
+                    executionId,
+                    stepId: step.id,
+                    stepType: step.type,
+                  },
+                  'Workflow execution stopped by filter',
+                );
+
+                break;
+              }
+            } catch (error) {
+              const normalizedError =
+                error instanceof Error
+                  ? error
+                  : new Error('Unknown step execution error');
+
+              const message = normalizedError.message;
+
+              await this.database.stepExecution.update({
+                where: {
+                  executionId_stepId: {
+                    executionId,
+                    stepId: step.id,
+                  },
+                },
+                data: {
+                  status: 'FAILED',
+                  error: message,
+                  finishedAt: new Date(),
+                },
+              });
+
+              this.logger.error(
+                {
+                  executionId,
+                  stepId: step.id,
+                  stepType: step.type,
+                  err: normalizedError,
+                },
+                'Workflow step failed',
+              );
+
+              throw normalizedError;
+            }
           }
+        } catch (error: unknown) {
+          const normalizedError =
+            error instanceof Error
+              ? error
+              : new Error('Unknown workflow execution error');
 
-          this.logger.log(
-            `Execution ${executionId} stopped after step ${step.id}`,
-          );
+          span.recordException(normalizedError);
 
-          break;
+          span.setStatus({
+            code: SpanStatusCode.ERROR,
+            message: normalizedError.message,
+          });
+
+          throw normalizedError;
+        } finally {
+          span.end();
         }
-      } catch (error) {
-        const message =
-          error instanceof Error
-            ? error.message
-            : 'Unknown step execution error';
-
-        await this.database.stepExecution.update({
-          where: {
-            executionId_stepId: {
-              executionId,
-              stepId: step.id,
-            },
-          },
-          data: {
-            status: 'FAILED',
-            error: message,
-            finishedAt: new Date(),
-          },
-        });
-
-        this.logger.error(
-          `Step ${step.id} failed for execution ${executionId}: ${message}`,
-        );
-
-        throw error;
-      }
-    }
+      },
+    );
   }
 
   private async executeStep(
@@ -412,5 +469,52 @@ export class WorkflowEngineService {
     }
 
     return current;
+  }
+
+  private async executeStepWithTracing(
+    executionId: string,
+    step: WorkflowStep,
+    input: WorkflowData,
+    userId: string,
+  ): Promise<StepResult> {
+    return this.tracer.startActiveSpan(
+      'workflow.step.execute',
+      {
+        attributes: {
+          'relayflow.execution.id': executionId,
+
+          'relayflow.step.id': step.id,
+
+          'relayflow.step.type': step.type,
+        },
+      },
+      async (span) => {
+        try {
+          const result = await this.executeStep(step, input, userId);
+
+          span.setStatus({
+            code: SpanStatusCode.OK,
+          });
+
+          return result;
+        } catch (error: unknown) {
+          const normalizedError =
+            error instanceof Error
+              ? error
+              : new Error('Unknown step execution error');
+
+          span.recordException(normalizedError);
+
+          span.setStatus({
+            code: SpanStatusCode.ERROR,
+            message: normalizedError.message,
+          });
+
+          throw normalizedError;
+        } finally {
+          span.end();
+        }
+      },
+    );
   }
 }

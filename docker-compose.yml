@@ -40,6 +40,12 @@ services:
       timeout: 5s
       retries: 5
 
+  jaeger:
+    image: cr.jaegertracing.io/jaegertracing/jaeger:2.20.0
+    ports:
+      - '16686:16686'
+      - '4318:4318'
+
 volumes:
   postgres_data:
   redis_data:

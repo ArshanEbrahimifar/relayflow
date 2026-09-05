@@ -5,6 +5,7 @@ import { RedisModule } from '@app/redis';
 import { Module } from '@nestjs/common';
 import { WorkflowExecutionProcessor } from './executions/workflow-execution.processor';
 import { WorkflowEngineModule } from '@app/workflow-engine';
+import { ObservabilityModule } from '@app/observability';
 
 @Module({
   imports: [
@@ -13,6 +14,7 @@ import { WorkflowEngineModule } from '@app/workflow-engine';
     RedisModule,
     QueueModule,
     WorkflowEngineModule,
+    ObservabilityModule,
   ],
   providers: [WorkflowExecutionProcessor],
 })

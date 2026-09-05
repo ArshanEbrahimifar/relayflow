@@ -19,6 +19,7 @@ import {
 } from '@nestjs/common';
 import { Queue } from 'bullmq';
 import { WebhookRateLimitException } from './exceptions/webhook-rate-limit.exception';
+import { context, propagation } from '@opentelemetry/api';
 
 @Injectable()
 export class WebhooksService {
@@ -140,8 +141,13 @@ export class WebhooksService {
     }
 
     try {
+      const traceContext: Record<string, string> = {};
+
+      propagation.inject(context.active(), traceContext);
+
       await this.webhookExecutionQueue.add(EXECUTE_WORKFLOW_JOB, {
         executionId: execution.id,
+        traceContext,
       });
     } catch {
       await this.database.execution.update({

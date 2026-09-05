@@ -1,4 +1,3 @@
-import { Logger } from '@nestjs/common';
 import { Processor, WorkerHost } from '@nestjs/bullmq';
 
 import type { Job } from 'bullmq';
@@ -16,6 +15,10 @@ import {
   workflowDefinitionSchema,
 } from '@app/workflow-engine';
 
+import { PinoLogger, InjectPinoLogger } from 'nestjs-pino';
+
+import { context, propagation } from '@opentelemetry/api';
+
 @Processor(WORKFLOW_EXECUTION_QUEUE, {
   concurrency: 5,
   limiter: {
@@ -24,76 +27,44 @@ import {
   },
 })
 export class WorkflowExecutionProcessor extends WorkerHost {
-  private readonly logger = new Logger(WorkflowExecutionProcessor.name);
-
   constructor(
     private readonly database: DatabaseService,
     private readonly workflowEngine: WorkflowEngineService,
+    @InjectPinoLogger(WorkflowExecutionProcessor.name)
+    private readonly logger: PinoLogger,
   ) {
     super();
   }
 
   async process(job: Job<ExecuteWorkflowJobData>): Promise<void> {
-    const { executionId } = job.data;
+    const { executionId, traceContext } = job.data;
 
-    const attemptNumber = job.attemptsMade + 1;
-
-    const workerProcessId = process.pid;
-
-    this.logger.log(
-      `Worker PID ${workerProcessId} processing execution ${executionId}, attempt ${attemptNumber}`,
+    const parentContext = propagation.extract(
+      context.active(),
+      traceContext ?? {},
     );
 
-    const execution = await this.database.execution.findUnique({
-      where: {
-        id: executionId,
-      },
-    });
+    return context.with(parentContext, async () => {
+      const attemptNumber = job.attemptsMade + 1;
 
-    if (!execution) {
-      throw new Error(`Execution ${executionId} not found`);
-    }
-
-    this.logger.log(
-      `Processing execution ${executionId}, attempt ${attemptNumber}`,
-    );
-
-    await this.database.execution.update({
-      where: {
-        id: executionId,
-      },
-
-      data: {
-        status: 'RUNNING',
-        startedAt: new Date(),
-        finishedAt: null,
-        error: null,
-      },
-    });
-
-    try {
-      const parsedDefinition = workflowDefinitionSchema.safeParse(
-        execution.workflowSnapshot,
+      this.logger.info(
+        {
+          executionId,
+          attempt: attemptNumber,
+          workerPid: process.pid,
+        },
+        'Processing workflow execution',
       );
 
-      if (!parsedDefinition.success) {
-        throw new Error('Execution workflow snapshot is invalid');
+      const execution = await this.database.execution.findUnique({
+        where: {
+          id: executionId,
+        },
+      });
+
+      if (!execution) {
+        throw new Error(`Execution ${executionId} not found`);
       }
-
-      const parsedTriggerPayload = workflowDataSchema.safeParse(
-        execution.triggerPayload,
-      );
-
-      if (!parsedTriggerPayload.success) {
-        throw new Error('Execution trigger payload is invalid');
-      }
-
-      await this.workflowEngine.execute(
-        execution.id,
-        execution.userId,
-        parsedDefinition.data,
-        parsedTriggerPayload.data,
-      );
 
       await this.database.execution.update({
         where: {
@@ -101,46 +72,107 @@ export class WorkflowExecutionProcessor extends WorkerHost {
         },
 
         data: {
-          status: 'SUCCEEDED',
-          finishedAt: new Date(),
+          status: 'RUNNING',
+          startedAt: new Date(),
+          finishedAt: null,
+          error: null,
         },
       });
 
-      this.logger.log(`Execution ${executionId} succeeded`);
-    } catch (error) {
-      const message =
-        error instanceof Error ? error.message : 'Unknown execution error';
-      const maxAttempts = job.opts.attempts ?? 1;
-
-      const currentAttempt = job.attemptsMade + 1;
-
-      const isFinalAttempt = currentAttempt >= maxAttempts;
-
-      await this.database.execution.update({
-        where: {
-          id: executionId,
-        },
-
-        data: {
-          ...(isFinalAttempt ? { status: 'FAILED' } : { status: 'RUNNING' }),
-          error: message,
-          ...(isFinalAttempt
-            ? { finishedAt: new Date() }
-            : { finishedAt: null }),
-        },
-      });
-
-      if (isFinalAttempt) {
-        this.logger.error(
-          `Execution ${executionId} failed after ${currentAttempt} attempts: ${message}`,
+      try {
+        const parsedDefinition = workflowDefinitionSchema.safeParse(
+          execution.workflowSnapshot,
         );
-      } else {
-        this.logger.warn(
-          `Execution ${executionId} attempt ${currentAttempt} failed, retrying: ${message}`,
+
+        if (!parsedDefinition.success) {
+          throw new Error('Execution workflow snapshot is invalid');
+        }
+
+        const parsedTriggerPayload = workflowDataSchema.safeParse(
+          execution.triggerPayload,
         );
+
+        if (!parsedTriggerPayload.success) {
+          throw new Error('Execution trigger payload is invalid');
+        }
+
+        await this.workflowEngine.execute(
+          execution.id,
+          execution.userId,
+          parsedDefinition.data,
+          parsedTriggerPayload.data,
+        );
+
+        await this.database.execution.update({
+          where: {
+            id: executionId,
+          },
+
+          data: {
+            status: 'SUCCEEDED',
+            finishedAt: new Date(),
+          },
+        });
+
+        this.logger.info(
+          {
+            executionId,
+            attempt: attemptNumber,
+            workerPid: process.pid,
+          },
+          'Workflow execution succeeded',
+        );
+      } catch (error: unknown) {
+        const normalizedError =
+          error instanceof Error ? error : new Error('Unknown execution error');
+
+        const message = normalizedError.message;
+
+        const maxAttempts = job.opts.attempts ?? 1;
+
+        const currentAttempt = job.attemptsMade + 1;
+
+        const isFinalAttempt = currentAttempt >= maxAttempts;
+
+        await this.database.execution.update({
+          where: {
+            id: executionId,
+          },
+          data: {
+            status: isFinalAttempt ? 'FAILED' : 'RUNNING',
+
+            error: message,
+
+            finishedAt: isFinalAttempt ? new Date() : null,
+          },
+        });
+
+        if (isFinalAttempt) {
+          this.logger.error(
+            {
+              executionId,
+              attempt: currentAttempt,
+              maxAttempts,
+              workerPid: process.pid,
+              err: normalizedError,
+            },
+            'Workflow execution failed',
+          );
+        } else {
+          this.logger.warn(
+            {
+              executionId,
+              attempt: currentAttempt,
+              maxAttempts,
+              workerPid: process.pid,
+              err: normalizedError,
+            },
+            'Workflow execution attempt failed; retrying',
+          );
+        }
+
+        throw normalizedError;
       }
-
-      throw error;
-    }
+    });
   }
 }

@@ -1,25 +1,16 @@
-import { NestFactory } from '@nestjs/core';
-import { ConfigService } from '@nestjs/config';
-import { AppModule } from './app.module';
-import { ValidationPipe } from '@nestjs/common';
-async function bootstrap() {
-  const app = await NestFactory.create(AppModule);
+import { startTracing } from '@app/observability';
 
-  app.enableShutdownHooks();
+type ApiBootstrapModule = {
+  bootstrapApi: () => Promise<void>;
+};
 
-  app.useGlobalPipes(
-    new ValidationPipe({
-      whitelist: true,
-      forbidNonWhitelisted: true,
-      transform: true,
-    }),
-  );
+async function main() {
+  startTracing('relayflow-api');
 
-  const configService = app.get(ConfigService);
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const { bootstrapApi } = require('./bootstrap') as ApiBootstrapModule;
 
-  const port = configService.getOrThrow<number>('API_PORT');
-
-  await app.listen(port);
+  await bootstrapApi();
 }
 
-void bootstrap();
+void main();

@@ -8,6 +8,7 @@ import { WorkflowsModule } from './workflows/workflows.module';
 import { ExecutionsModule } from './executions/executions.module';
 import { WebhooksModule } from './webhooks/webhooks.module';
 import { CredentialsModule } from './credentials/credentials.module';
+import { ObservabilityModule } from '@app/observability';
 
 @Module({
   imports: [
@@ -20,6 +21,7 @@ import { CredentialsModule } from './credentials/credentials.module';
     ExecutionsModule,
     WebhooksModule,
     CredentialsModule,
+    ObservabilityModule,
   ],
 })
 export class AppModule {}
