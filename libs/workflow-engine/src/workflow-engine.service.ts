@@ -16,7 +16,7 @@ import { EncryptionService } from '@app/encryption';
 import { z } from 'zod';
 import { validateHttpUrl } from './security/validate-http-url';
 import { safeFetch } from './security/safe-fetch';
-import { InjectPinoLogger, PinoLogger } from 'nestjs-pino';
+import { PinoLogger } from 'nestjs-pino';
 type StepResult = {
   output: WorkflowData;
   shouldContinue: boolean;
@@ -34,9 +34,10 @@ export class WorkflowEngineService {
   constructor(
     private readonly database: DatabaseService,
     private readonly encryption: EncryptionService,
-    @InjectPinoLogger(WorkflowEngineService.name)
     private readonly logger: PinoLogger,
-  ) {}
+  ) {
+    this.logger.setContext(WorkflowEngineService.name);
+  }
 
   async execute(
     executionId: string,

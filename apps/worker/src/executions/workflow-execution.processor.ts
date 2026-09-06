@@ -15,7 +15,7 @@ import {
   workflowDefinitionSchema,
 } from '@app/workflow-engine';
 
-import { PinoLogger, InjectPinoLogger } from 'nestjs-pino';
+import { PinoLogger } from 'nestjs-pino';
 
 import { context, propagation } from '@opentelemetry/api';
 
@@ -30,10 +30,10 @@ export class WorkflowExecutionProcessor extends WorkerHost {
   constructor(
     private readonly database: DatabaseService,
     private readonly workflowEngine: WorkflowEngineService,
-    @InjectPinoLogger(WorkflowExecutionProcessor.name)
     private readonly logger: PinoLogger,
   ) {
     super();
+    this.logger.setContext(WorkflowExecutionProcessor.name);
   }
 
   async process(job: Job<ExecuteWorkflowJobData>): Promise<void> {
