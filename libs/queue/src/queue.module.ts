@@ -30,7 +30,7 @@ import { QueueCapacityService } from './queue-capacity.service';
       },
     }),
   ],
-
+  providers: [QueueCapacityService],
   exports: [BullModule, QueueCapacityService],
 })
 export class QueueModule {}
