@@ -1,98 +1,607 @@
-<p align="center">
-  <a href="http://nestjs.com/" target="blank"><img src="https://nestjs.com/img/logo-small.svg" width="120" alt="Nest Logo" /></a>
-</p>
+# RelayFlow
 
-[circleci-image]: https://img.shields.io/circleci/build/github/nestjs/nest/master?token=abc123def456
-[circleci-url]: https://circleci.com/gh/nestjs/nest
+RelayFlow is a backend workflow automation platform inspired by tools such as Zapier and n8n.
 
-  <p align="center">A progressive <a href="http://nodejs.org" target="_blank">Node.js</a> framework for building efficient and scalable server-side applications.</p>
-    <p align="center">
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/v/@nestjs/core.svg" alt="NPM Version" /></a>
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/l/@nestjs/core.svg" alt="Package License" /></a>
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/dm/@nestjs/common.svg" alt="NPM Downloads" /></a>
-<a href="https://circleci.com/gh/nestjs/nest" target="_blank"><img src="https://img.shields.io/circleci/build/github/nestjs/nest/master" alt="CircleCI" /></a>
-<a href="https://discord.gg/G7Qnnhy" target="_blank"><img src="https://img.shields.io/badge/discord-online-brightgreen.svg" alt="Discord"/></a>
-<a href="https://opencollective.com/nest#backer" target="_blank"><img src="https://opencollective.com/nest/backers/badge.svg" alt="Backers on Open Collective" /></a>
-<a href="https://opencollective.com/nest#sponsor" target="_blank"><img src="https://opencollective.com/nest/sponsors/badge.svg" alt="Sponsors on Open Collective" /></a>
-  <a href="https://paypal.me/kamilmysliwiec" target="_blank"><img src="https://img.shields.io/badge/Donate-PayPal-ff3f59.svg" alt="Donate us"/></a>
-    <a href="https://opencollective.com/nest#sponsor"  target="_blank"><img src="https://img.shields.io/badge/Support%20us-Open%20Collective-41B883.svg" alt="Support us"></a>
-  <a href="https://twitter.com/nestframework" target="_blank"><img src="https://img.shields.io/twitter/follow/nestframework.svg?style=social&label=Follow" alt="Follow us on Twitter"></a>
-</p>
-  <!--[![Backers on Open Collective](https://opencollective.com/nest/backers/badge.svg)](https://opencollective.com/nest#backer)
-  [![Sponsors on Open Collective](https://opencollective.com/nest/sponsors/badge.svg)](https://opencollective.com/nest#sponsor)-->
+It allows users to define workflows, trigger them manually or through webhooks, execute workflow steps asynchronously using background workers, and track the execution lifecycle.
 
-## Description
+The project focuses on backend architecture, asynchronous processing, reliability, security, and observability.
 
-[Nest](https://github.com/nestjs/nest) framework TypeScript starter repository.
+---
 
-## Project setup
+## Features
 
-```bash
-$ npm install
+- JWT authentication
+- Workflow creation and lifecycle management
+- Manual and webhook triggers
+- Workflow versioning and execution snapshots
+- Asynchronous execution with BullMQ
+- Separate API and Worker processes
+- Step-level execution tracking
+- Transform steps
+- Filter steps
+- HTTP request steps
+- Retry with exponential backoff
+- Resume failed executions without re-running successful steps
+- Webhook idempotency
+- Encrypted credentials using AES-256-GCM
+- Bearer token credentials for HTTP steps
+- SSRF protection for outbound HTTP requests
+- Safe redirect handling
+- Distributed webhook rate limiting with Redis
+- Queue backpressure
+- Multi-worker processing
+- Structured logging with Pino
+- Distributed tracing with OpenTelemetry
+- Jaeger trace visualization
+- Core integration tests
+
+---
+
+## Architecture
+
+RelayFlow is implemented as a modular monolith with two separate runtime processes:
+
+```text
+                     ┌──────────────┐
+                     │    Client    │
+                     └──────┬───────┘
+                            │
+                            ▼
+                    ┌───────────────┐
+                    │   NestJS API  │
+                    └───────┬───────┘
+                            │
+             ┌──────────────┼──────────────┐
+             │              │              │
+             ▼              ▼              ▼
+        PostgreSQL        Redis          BullMQ
+                                             │
+                                             ▼
+                                    ┌────────────────┐
+                                    │ NestJS Worker  │
+                                    └───────┬────────┘
+                                            │
+                                            ▼
+                                    Workflow Engine
+                                            │
+                         ┌──────────────────┼──────────────────┐
+                         ▼                  ▼                  ▼
+                     TRANSFORM            FILTER        HTTP_REQUEST
 ```
 
-## Compile and run the project
+The API handles HTTP requests, authentication, workflow management, webhook ingestion, and job creation.
 
-```bash
-# development
-$ npm run start
+The Worker consumes BullMQ jobs and executes workflows through the Workflow Engine.
 
-# watch mode
-$ npm run start:dev
+---
 
-# production mode
-$ npm run start:prod
+## Tech Stack
+
+- Node.js
+- TypeScript
+- NestJS
+- PostgreSQL
+- Prisma ORM
+- Redis
+- BullMQ
+- Zod
+- JWT
+- Argon2
+- Pino
+- OpenTelemetry
+- Jaeger
+- Docker
+- Jest
+- Supertest
+
+---
+
+## Workflow Execution
+
+When a workflow is triggered, RelayFlow creates an immutable execution snapshot containing:
+
+- Workflow version
+- Workflow definition
+- Trigger type
+- Trigger payload
+
+The execution is then queued in BullMQ.
+
+```text
+Trigger
+  ↓
+Execution created
+  ↓
+BullMQ
+  ↓
+Worker
+  ↓
+Workflow Engine
+  ↓
+StepExecution records
+  ↓
+SUCCEEDED / FAILED
 ```
 
-## Run tests
+Each step has its own execution state:
 
-```bash
-# unit tests
-$ npm run test
-
-# e2e tests
-$ npm run test:e2e
-
-# test coverage
-$ npm run test:cov
+```text
+PENDING
+RUNNING
+SUCCEEDED
+FAILED
+SKIPPED
 ```
 
-## Deployment
+---
 
-When you're ready to deploy your NestJS application to production, there are some key steps you can take to ensure it runs as efficiently as possible. Check out the [deployment documentation](https://docs.nestjs.com/deployment) for more information.
+## Supported Steps
 
-If you are looking for a cloud-based platform to deploy your NestJS application, check out [Mau](https://mau.nestjs.com), our official platform for deploying NestJS applications on AWS. Mau makes deployment straightforward and fast, requiring just a few simple steps:
+### TRANSFORM
 
-```bash
-$ npm install -g @nestjs/mau
-$ mau deploy
+Creates a new object using values from the current workflow input.
+
+Example:
+
+```json
+{
+  "id": "transform-1",
+  "type": "TRANSFORM",
+  "config": {
+    "template": {
+      "message": "{{input.message}}"
+    }
+  }
+}
 ```
 
-With Mau, you can deploy your application in just a few clicks, allowing you to focus on building features rather than managing infrastructure.
+---
 
-## Resources
+### FILTER
 
-Check out a few resources that may come in handy when working with NestJS:
+Stops the workflow when a condition does not match.
 
-- Visit the [NestJS Documentation](https://docs.nestjs.com) to learn more about the framework.
-- For questions and support, please visit our [Discord channel](https://discord.gg/G7Qnnhy).
-- To dive deeper and get more hands-on experience, check out our official video [courses](https://courses.nestjs.com/).
-- Deploy your application to AWS with the help of [NestJS Mau](https://mau.nestjs.com) in just a few clicks.
-- Visualize your application graph and interact with the NestJS application in real-time using [NestJS Devtools](https://devtools.nestjs.com).
-- Need help with your project (part-time to full-time)? Check out our official [enterprise support](https://enterprise.nestjs.com).
-- To stay in the loop and get updates, follow us on [X](https://x.com/nestframework) and [LinkedIn](https://linkedin.com/company/nestjs).
-- Looking for a job, or have a job to offer? Check out our official [Jobs board](https://jobs.nestjs.com).
+Supported operators:
 
-## Support
+```text
+EQUALS
+NOT_EQUALS
+GREATER_THAN
+LESS_THAN
+```
 
-Nest is an MIT-licensed open source project. It can grow thanks to the sponsors and support by the amazing backers. If you'd like to join them, please [read more here](https://docs.nestjs.com/support).
+Example:
 
-## Stay in touch
+```json
+{
+  "id": "filter-1",
+  "type": "FILTER",
+  "config": {
+    "field": "priority",
+    "operator": "EQUALS",
+    "value": "high"
+  }
+}
+```
 
-- Author - [Kamil Myśliwiec](https://twitter.com/kammysliwiec)
-- Website - [https://nestjs.com](https://nestjs.com/)
-- Twitter - [@nestframework](https://twitter.com/nestframework)
+---
 
-## License
+### HTTP_REQUEST
 
-Nest is [MIT licensed](https://github.com/nestjs/nest/blob/master/LICENSE).
+Sends an outbound HTTP request.
+
+Example:
+
+```json
+{
+  "id": "http-1",
+  "type": "HTTP_REQUEST",
+  "config": {
+    "method": "POST",
+    "url": "https://example.com/webhook",
+    "headers": {
+      "Content-Type": "application/json"
+    },
+    "body": {
+      "message": "Hello from RelayFlow"
+    }
+  }
+}
+```
+
+HTTP steps also support encrypted Bearer Token credentials through a `credentialId`.
+
+---
+
+## Reliability
+
+### Retry and Backoff
+
+Workflow execution jobs use BullMQ retries with exponential backoff.
+
+```text
+Attempt 1
+   ↓ failed
+2 seconds
+   ↓
+Attempt 2
+   ↓ failed
+4 seconds
+   ↓
+Attempt 3
+```
+
+Previously successful steps are not executed again during a retry.
+
+Only the failed step and remaining workflow are resumed.
+
+---
+
+## Webhook Idempotency
+
+Webhook requests can include:
+
+```http
+Idempotency-Key: unique-key
+```
+
+RelayFlow stores the key together with the workflow execution.
+
+The database enforces:
+
+```text
+workflowId + idempotencyKey = unique
+```
+
+Sending the same webhook again with the same key returns the existing execution instead of creating another one.
+
+---
+
+## Security
+
+### Credential Encryption
+
+Credentials are encrypted before being stored in PostgreSQL using:
+
+```text
+AES-256-GCM
+```
+
+Stored fields include:
+
+```text
+ciphertext
+iv
+authTag
+```
+
+Plaintext credential data is never returned by the API.
+
+---
+
+### SSRF Protection
+
+Outbound HTTP requests are validated before execution.
+
+RelayFlow blocks requests targeting private or local network addresses such as:
+
+```text
+127.0.0.1
+10.0.0.0/8
+172.16.0.0/12
+192.168.0.0/16
+169.254.0.0/16
+localhost
+private IPv6 ranges
+```
+
+Redirects are manually validated to prevent redirect-based SSRF attacks.
+
+Cross-origin redirects are rejected.
+
+---
+
+## Rate Limiting
+
+Webhook endpoints use a Redis-backed distributed rate limiter.
+
+Current limit:
+
+```text
+60 requests
+per 60 seconds
+per workflow
+```
+
+Because the counter is stored in Redis, the limit works across multiple API instances.
+
+---
+
+## Scaling
+
+RelayFlow supports multiple Worker processes consuming from the same BullMQ queue.
+
+Each Worker currently uses:
+
+```text
+concurrency: 5
+```
+
+and a processing limiter of:
+
+```text
+20 jobs / second
+```
+
+The API also applies queue backpressure before accepting new workflow executions.
+
+---
+
+## Observability
+
+RelayFlow uses structured logging with Pino.
+
+Logs include business context such as:
+
+```text
+executionId
+stepId
+stepType
+attempt
+workerPid
+```
+
+OpenTelemetry is used for distributed tracing.
+
+Custom spans include:
+
+```text
+workflow.execute
+workflow.step.execute
+```
+
+Trace context is propagated from the API through BullMQ to the Worker.
+
+Example trace:
+
+```text
+HTTP Request
+   │
+   └── workflow.execute
+          │
+          ├── workflow.step.execute
+          │      TRANSFORM
+          │
+          ├── workflow.step.execute
+          │      FILTER
+          │
+          └── workflow.step.execute
+                 HTTP_REQUEST
+```
+
+Jaeger can be used locally to inspect traces.
+
+---
+
+## Demo
+
+A real integration was tested using GitHub Issues.
+
+```text
+GitHub Issue Created
+        ↓
+GitHub Webhook
+        ↓
+Cloudflare Tunnel
+        ↓
+RelayFlow Webhook API
+        ↓
+Execution
+        ↓
+BullMQ
+        ↓
+Worker
+        ↓
+HTTP Request Step
+        ↓
+Webhook.site
+```
+
+This demonstrates RelayFlow receiving a real third-party webhook and processing it asynchronously through the complete workflow execution pipeline.
+
+---
+
+## API Overview
+
+### Authentication
+
+```text
+POST /auth/register
+POST /auth/login
+GET  /auth/me
+```
+
+### Workflows
+
+```text
+POST   /workflows
+GET    /workflows
+GET    /workflows/:id
+
+PATCH  /workflows/:id
+PATCH /workflows/:id/activate
+PATCH /workflows/:id/pause
+
+POST /workflows/:id/run
+```
+
+### Executions
+
+```text
+GET /executions
+GET /executions/:id
+```
+
+### Webhooks
+
+```text
+POST /webhooks/:token
+```
+
+### Credentials
+
+```text
+POST   /credentials
+GET    /credentials
+DELETE /credentials/:id
+```
+
+---
+
+## Local Development
+
+### 1. Install dependencies
+
+```bash
+npm install
+```
+
+### 2. Configure environment variables
+
+Create a `.env` file.
+
+Example:
+
+```env
+NODE_ENV=development
+
+API_PORT=3000
+
+DATABASE_URL=postgresql://postgres:postgres@localhost:5432/relayflow
+
+REDIS_HOST=localhost
+REDIS_PORT=6379
+
+JWT_SECRET=your-access-secret
+JWT_ACCESS_TTL_SECONDS=900
+
+CREDENTIAL_ENCRYPTION_KEY=64_CHARACTER_HEX_KEY
+
+OTEL_EXPORTER_OTLP_TRACES_ENDPOINT=http://localhost:4318/v1/traces
+```
+
+A 32-byte encryption key can be generated with:
+
+```bash
+node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
+```
+
+---
+
+### 3. Start infrastructure
+
+```bash
+docker compose up -d
+```
+
+This starts services such as:
+
+```text
+PostgreSQL
+Redis
+Jaeger
+```
+
+---
+
+### 4. Generate Prisma Client
+
+```bash
+npx prisma generate
+```
+
+Run database migrations if required:
+
+```bash
+npx prisma migrate dev
+```
+
+---
+
+### 5. Start the API
+
+```bash
+nest start api --watch
+```
+
+---
+
+### 6. Start the Worker
+
+Open another terminal:
+
+```bash
+nest start worker --watch
+```
+
+---
+
+## Testing
+
+The project contains focused integration tests for the most important application flows.
+
+Run the tests with:
+
+```bash
+node --experimental-vm-modules node_modules/jest/bin/jest.js --runInBand
+```
+
+Current core scenarios include:
+
+```text
+Manual workflow execution creation
+Webhook idempotency
+```
+
+---
+
+## Project Goals
+
+RelayFlow was built as a backend engineering project to practice concepts commonly found in production systems:
+
+- asynchronous processing
+- queues and background workers
+- retries
+- idempotency
+- distributed rate limiting
+- horizontal worker scaling
+- encrypted secrets
+- SSRF protection
+- observability
+- distributed tracing
+- execution state management
+
+The goal is not to replicate every feature of Zapier or n8n, but to build and understand the backend systems that make workflow automation platforms reliable.
+
+---
+
+## Current Status
+
+Core backend functionality is complete.
+
+Remaining improvements include:
+
+- API documentation with Swagger
+- CI improvements
+- deployment
+- additional integrations
+- broader automated test coverage
+
+---
+
+## Author
+
+**Arshan Ebrahimifar**
+
+- GitHub: [ArshanEbrahimifar](https://github.com/ArshanEbrahimifar)
+- Repository: [relayflow](https://github.com/ArshanEbrahimifar/relayflow)
