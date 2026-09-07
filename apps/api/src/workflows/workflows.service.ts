@@ -77,6 +77,7 @@ export class WorkflowsService {
         status: true,
         definition: true,
         version: true,
+        webhookToken: true,
         createdAt: true,
         updatedAt: true,
       },

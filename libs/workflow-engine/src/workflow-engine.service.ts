@@ -438,7 +438,7 @@ export class WorkflowEngineService {
     const contentType = response.headers.get('content-type');
 
     if (!contentType?.includes('application/json')) {
-      throw new Error('HTTP response is not JSON');
+      return {};
     }
 
     const data: unknown = await response.json();
